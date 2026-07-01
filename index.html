@@ -420,24 +420,37 @@ function goals(comp) {
 
 // ── Pick best match ───────────────────────────────────────────────────────
 function pick(events) {
-  const now = Date.now();
-  const byStatus = n => events.filter(e=>e.status?.type?.name===n);
+  const now      = Date.now();
+  const todayStr = new Date().toDateString();
+  const sameDay  = e => new Date(e.date).toDateString() === todayStr;
 
-  const live = events.filter(e=>{
-    const n=e.status?.type?.name;
-    return n==='STATUS_IN_PROGRESS'||n==='STATUS_HALFTIME';
+  // 1. Live or half-time — always wins, no exceptions
+  const live = events.filter(e => {
+    const n = e.status?.type?.name;
+    return n === 'STATUS_IN_PROGRESS' || n === 'STATUS_HALFTIME';
   });
-  if (live.length) return { ev:live[0], state: live[0].status.type.name==='STATUS_HALFTIME'?'ht':'live' };
+  if (live.length) {
+    const ht = live[0].status.type.name === 'STATUS_HALFTIME';
+    return { ev: live[0], state: ht ? 'ht' : 'live' };
+  }
 
-  const up = events
-    .filter(e=>e.status?.type?.name==='STATUS_SCHEDULED'&&new Date(e.date)>now)
-    .sort((a,b)=>new Date(a.date)-new Date(b.date));
-  if (up.length) return { ev:up[0], state:'upcoming' };
+  // 2. Most recently finished match TODAY — keep showing the result
+  const ftToday = events
+    .filter(e => e.status?.type?.completed && sameDay(e))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (ftToday.length) return { ev: ftToday[0], state: 'ft' };
 
-  const ft = events
-    .filter(e=>e.status?.type?.completed)
-    .sort((a,b)=>new Date(b.date)-new Date(a.date));
-  if (ft.length) return { ev:ft[0], state:'ft' };
+  // 3. Next upcoming — only if nothing live or finished today
+  const upcoming = events
+    .filter(e => e.status?.type?.name === 'STATUS_SCHEDULED' && new Date(e.date) > now)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (upcoming.length) return { ev: upcoming[0], state: 'upcoming' };
+
+  // 4. Fallback: most recent finished ever
+  const ftAny = events
+    .filter(e => e.status?.type?.completed)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (ftAny.length) return { ev: ftAny[0], state: 'ft' };
 
   return null;
 }
